@@ -84,8 +84,10 @@ no router, no UI kit. Token is kept in `localStorage` (browser-only app); it is 
 - Manual browser runs at 390 px against the real API for token entry and 401 handling, and against the local mock for the
   balance → validation → confirm → submit → pending → completed/failed flow, lost response (504 after creation, replayed
   by key → exactly one claim), all-504 unknown state + "Check again", and reload-resume.
-- Real-token verification of Balances, Claim and Activity on the live deployment is done by the author with their own
-  token; the assistant never had access to it (it was never pasted into the conversation, code, logs or build).
+- Real-token testing on the live deployment was done by the author with their own token; the assistant never had access
+  to it (it was never pasted into the conversation, code, logs or build). Real claims against the API (one completed, one
+  failed) exposed two UI-state bugs (stale amount after completion, repeated failure text), fixed with tests in the last commit.
+- The final bundle served by the live URL is the one built from the final commit's app code (checked by bundle hash).
 
 ## AI collaboration
 **Setup.** One main agent (Claude Code, Claude Sonnet 5.5), no subagents. The AI wrote code, tests, mocks and docs; the
@@ -131,5 +133,6 @@ deployment.
 - No endpoint lists claims, so an unknown outcome can only be reconciled by key replay (not by search).
 - Validation uses the latest snapshot for `available`; a stale snapshot can briefly block/allow differently than the server.
 - Token lives in `localStorage` (readable by any script on the origin); acceptable for this test app, not for production.
+- The claim form is in-memory UI state: leaving the Claim screen and coming back resets it (an in-flight or settled claim is persisted separately).
 - Single claim at a time; Activity is not live-updated and has no filters; no automated UI/e2e tests (logic is unit-tested, UI verified manually).
 - The bundler/package versions are those scaffolded by `create-expo-app` (Expo SDK 58).

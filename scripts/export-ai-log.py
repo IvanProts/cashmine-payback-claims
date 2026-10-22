@@ -8,10 +8,12 @@ Writes  <name>.redacted.jsonl  (conversation records only) and  <name>.md  (read
 Kept:    user and assistant records: user prompts, assistant text, tool calls and tool results.
 Dropped: API request blobs, system/harness attachments, hook records, opaque thinking signatures (thinking text is
          empty in the export), and base64 screenshot data (replaced by a placeholder).
+Optional: AI_LOG_EXTRA_REDACT="word1,word2" also redacts those literals (case-insensitive), e.g. a personal name.
 Redacted by PATTERN (never by literal secret): bearer tokens, GitHub/OpenAI/AWS/JWT-style keys, e-mail addresses
          (except noreply@anthropic.com and *@example.com), and the local home directory.
 """
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -29,10 +31,17 @@ EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 DROP_KEYS = {"signature", "serverClassifierRequest", "requestRef", "wireToolInputs", "toolUseResult", "caller"}
 
 
+EXTRA = [re.compile(re.escape(w), re.I) for w in os.environ.get("AI_LOG_EXTRA_REDACT", "").split(",") if w.strip()]
+
+
 def redact(s: str) -> str:
     for rx, rep in RULES:
         s = rx.sub(rep, s)
-    return EMAIL_RE.sub(lambda m: m.group(0) if EMAIL_ALLOW.match(m.group(0)) else "<redacted-email>", s)
+    # Whole addresses first, so a literal inside an e-mail never leaves the rest of the address behind.
+    s = EMAIL_RE.sub(lambda m: m.group(0) if EMAIL_ALLOW.match(m.group(0)) else "<redacted-email>", s)
+    for rx in EXTRA:
+        s = rx.sub("<redacted-name>", s)
+    return s
 
 
 def clean(o):

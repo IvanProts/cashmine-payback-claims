@@ -17,9 +17,10 @@ thinking signatures (the exported thinking text is empty) and base64 screenshot 
 
 ## Redaction (by pattern)
 Bearer tokens, GitHub/OpenAI/AWS/JWT-style keys, e-mail addresses (except `noreply@anthropic.com` and `*@example.com`), and
-the local home directory (`/Users/<name>` becomes `<home>`). The real API token was never typed or pasted into the
+the local home directory (`/Users/<name>` becomes `<home>`), and any literal terms passed via `AI_LOG_EXTRA_REDACT` (used
+for the author's personal identifier; not stored in the repo). The real API token was never typed or pasted into the
 conversation. The only token-like strings are fake test values used for local runs and 401 checks (`mock-token`,
 `invalid-test-token`, `dummy-invalid-token`). The redacted files were re-scanned for the patterns above and for
 high-entropy strings in user-authored text; none remained.
 
-The export is a snapshot taken during the session; `session-01.*` is regenerated from the final export before submission.
+`session-01.*` was generated from the final session export taken just before submission, so it ends at that point.

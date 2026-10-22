@@ -41,6 +41,12 @@ MODE=lose-first node scripts/mock-api.mjs      # also: normal | always-504 | dea
 EXPO_PUBLIC_API_BASE=http://localhost:8787 npm run web
 ```
 
+## Deployment
+
+`npm run build` exports a static site to `dist/`; the live URL above serves that folder (Netlify Drop). No environment
+variables or secrets are needed at build time; the API base URL is the public default and each user enters their own token
+in the browser.
+
 ## Structure
 
 ```
@@ -51,6 +57,9 @@ src/lib/claimFlow.ts         idempotent send/replay + status polling (pure, unit
 src/lib/storage.ts           localStorage wrapper
 src/useBalances.ts           balances hook (server-authoritative)
 src/useClaimAttempt.ts       persisted claim attempt hook
+src/lib/claimForm.ts         claim-form state rules (reset/keep/empty state)
+src/lib/retry.ts             GET retry/backoff policy (never used for the claim POST)
+src/lib/sync.ts              balance sync gate after a claim settles (persisted per token)
 src/lib/activity.ts          activity parsing (signed amounts), page merge, sign formatting
 src/useActivity.ts           paginated history hook
 src/screens/                 Token, Balances, Claim, ClaimStatus, Activity
