@@ -66,7 +66,7 @@ used for balances; display is exact (`Decimal`), with an explicit sign. Unknown 
 independent of balances and claims: a failed later page keeps the loaded rows and offers Retry; a refresh supersedes any
 in-flight page request. The list reloads when the tab is opened or "Refresh" is pressed (it is not live-updated).
 
-**Architecture.** Small: pure logic in `src/lib` (unit-tested without React), two hooks, four screens. No state library,
+**Architecture.** Small: pure logic in `src/lib` (unit-tested without React), three data hooks (balances, claim attempt, activity), five screens/views (token, balances, claim, claim status, activity). No state library,
 no router, no UI kit. Token is kept in `localStorage` (browser-only app); it is never logged or placed in URLs.
 
 ## Verification performed
@@ -74,14 +74,45 @@ no router, no UI kit. Token is kept in `localStorage` (browser-only app); it is 
 - Manual browser runs at 390 px against the real API for token entry and 401 handling, and against the local mock for the
   balance → validation → confirm → submit → pending → completed/failed flow, lost response (504 after creation, replayed
   by key → exactly one claim), all-504 unknown state + "Check again", and reload-resume.
-- Final production verification against the real API with a real token: see README / submission notes.
+- Real-token verification of Balances, Claim and Activity on the live deployment is done by the author with their own
+  token; the assistant never had access to it (it was never pasted into the conversation, code, logs or build).
 
 ## AI collaboration
-Built with Claude Code (Claude Sonnet 5.5) as a single main agent, no subagents. The human set requirements and made the
-decisions (chose the server-authoritative approach; corrected me to follow the documented validation rules exactly, to
-keep the token out of the chat/code, to bound retries with an identical key, not to infer reflection from `asOf`, and to
-deploy via Netlify Drop). AI wrote the code and tests; the human reviews, enters the token and deploys. Transcripts:
-`ai-logs/` (secrets redacted).
+**Setup.** One main agent (Claude Code, Claude Sonnet 5.5), no subagents. The AI wrote code, tests, mocks and docs; the
+human set requirements, made the decisions below, deployed (Netlify Drop) and tests the live app with their own token. Full redacted
+transcripts are in `ai-logs/` (see `ai-logs/README.md`); the examples below point to where to find them.
+
+**Example 1: AI proposes options, human decides (post-claim balance).** Before any claim code, I asked for at least two
+approaches. The AI laid out (A) optimistic balance update vs (B) server-authoritative balances plus a separate pending-claim
+state, with trade-offs for duplicate-claim risk, rollback after failure/timeout and user trust, and recommended B because
+snapshots lag up to 15 s and an unknown outcome makes rollback undecidable. The human confirmed B and tightened it with
+corrections that changed the implementation: follow the documented validation rules exactly (no silent `amount > fee`
+rule; extras are listed as product safeguards above), bound retries and always reuse the same idempotency key + body,
+treat `GET /claims/{id}` as authoritative and never infer reflection from `asOf` alone, and keep the token out of the chat.
+(ai-logs: "Decision: balance after claim submission", then "Decision confirmed: B".)
+
+**Example 2: AI mistake caught by verification, not by the unit tests.** After a user report of a first-open "Service
+temporarily unavailable" on the claim screen, the AI diagnosed the cause (one request per open, no duplicates; GETs had no
+retry) and added a retry layer with 429 `retryAfterMs` support; 71 tests passed. A browser run against the mock still showed a
+single request: the AI's edit script had updated the screen but never wrote `api.ts`, so the new retry module was tested in
+isolation but not wired in. The AI found this by checking the served bundle and the request log, fixed it, and added tests that
+go through the real `getClaimOptions`/`getBalances`/`createClaim` with a stubbed `fetch` (including "POST is never retried").
+Lesson recorded: assert wiring, and verify behaviour in the running app, not only unit tests.
+
+**Example 3: human review finds gaps in AI output (stale balances).** The human noticed a claim showing "Completed" while a
+stale snapshot still showed it under "Claiming" (with the balance refresh returning 503). The AI designed a balance-sync gate
+(pause only *new* claims until a successful fetch returns a snapshot newer than the settlement). The human then spotted that
+the gate lived only in memory, so a reload would bypass it. The AI persisted it (timestamps/ids only, tagged per token,
+stored as closed once reconciled, 5-minute safety release) and added tests for reload during syncing, a 503 refresh, a stale
+cached snapshot, successful reconciliation and token change; the reload path was re-checked in the browser.
+
+**Also used AI for:** a local mock API (`scripts/mock-api.mjs`) to rehearse failure modes the real API can only produce
+occasionally (504 after the claim was created, permanent 504, 503/429 on reads, failed claims, paginated activity); a UI
+redesign (presentation only); and the redaction script for these logs (`scripts/export-ai-log.py`).
+
+**What I verified myself rather than trusting AI output:** the API facts (re-read from the docs before the Activity work:
+cursor format, signed amounts), the idempotency behaviour (one claim after a lost response), the 390 px layout, and the live
+deployment.
 
 ## Limitations / assumptions
 - Docs give no rounding rule, no total-USD definition and no idempotency-key lifetime. Assumed: total = Σ available ×
