@@ -88,7 +88,10 @@ function Main(props: { token: string; onChangeToken: () => void }) {
   return (
     <View>
       <View style={styles.header}>
-        <Text style={text.h1}>CashMine Payback</Text>
+        <View>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, letterSpacing: 0.6 }}>CASHMINE</Text>
+          <Text style={text.h1}>Payback</Text>
+        </View>
         <Button label="Token" kind="secondary" size="sm" onPress={props.onChangeToken} />
       </View>
       {claim.attempt && (
@@ -137,7 +140,7 @@ function Main(props: { token: string; onChangeToken: () => void }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  scroll: { alignItems: 'center', padding: 12, paddingBottom: 32 },
+  scroll: { alignItems: 'center', padding: 16, paddingBottom: 40 },
   column: { width: '100%', maxWidth: 480 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
 });

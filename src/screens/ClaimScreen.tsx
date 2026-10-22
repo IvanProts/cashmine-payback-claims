@@ -2,17 +2,34 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ApiError, BalanceItem, ClaimBody, ClaimOptions, getClaimOptions } from '../lib/api';
 import { claimPreview, plain, validateAmount } from '../lib/money';
-import { Banner, Button, Card, colors, text } from '../ui';
+import { Avatar, Banner, Button, Card, colors, num, text } from '../ui';
 
-function Chip(props: { label: string; active: boolean; onPress: () => void; disabled?: boolean }) {
+function Pill(props: { label: string; asset?: string; active: boolean; onPress: () => void; disabled?: boolean }) {
   return (
     <Pressable
       onPress={props.onPress}
       disabled={props.disabled}
-      style={[styles.chip, props.active && styles.chipActive, props.disabled && { opacity: 0.5 }]}
+      style={[styles.pill, props.active && styles.pillActive, props.disabled && !props.active && { opacity: 0.5 }]}
     >
-      <Text style={{ color: props.active ? '#fff' : colors.text, fontWeight: '600' }}>{props.label}</Text>
+      {props.asset && <Avatar asset={props.asset} size={22} />}
+      <Text style={{ color: props.active ? '#fff' : colors.text, fontWeight: '700', fontSize: 14 }}>{props.label}</Text>
     </Pressable>
+  );
+}
+
+function SummaryRow(props: { label: string; value: string; strong?: boolean; muted?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingVertical: 5 }}>
+      <Text style={props.strong ? text.h2 : text.muted}>{props.label}</Text>
+      <Text
+        style={[
+          props.strong ? { fontSize: 22, fontWeight: '800', color: colors.text } : { fontSize: 15, fontWeight: '600', color: props.muted ? colors.muted : colors.text },
+          num,
+        ]}
+      >
+        {props.value}
+      </Text>
+    </View>
   );
 }
 
@@ -91,11 +108,17 @@ export function ClaimScreen(props: {
     props.rejection &&
     `${props.rejection.message}${props.rejection.field ? ` (field: ${props.rejection.field})` : ''}`;
 
+
+  const locked = confirming || props.locked;
+  const feeText = options ? `${plain(options.fee)} ${item.asset}` : '—';
+
   return (
     <View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <Text style={text.h1}>Claim</Text>
-        <Button label="← Balances" kind="link" size="sm" onPress={props.onBack} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+        <Pressable onPress={props.onBack} accessibilityRole="button" accessibilityLabel="Back to balances" style={styles.back}>
+          <Text style={{ fontSize: 22, color: colors.text, marginTop: -2 }}>‹</Text>
+        </Pressable>
+        <Text style={[text.h1, { marginLeft: 12 }]}>Claim</Text>
       </View>
 
       {props.rejection && (
@@ -106,155 +129,152 @@ export function ClaimScreen(props: {
         </Banner>
       )}
       {props.rejection?.status === 401 && (
-        <Button label="Change token" onPress={props.onChangeToken} style={{ marginBottom: 8 }} />
+        <Button label="Change token" onPress={props.onChangeToken} style={{ marginBottom: 12 }} />
       )}
-      {props.locked && <Banner tone="warn">A claim is in progress. You can submit another once it finishes.</Banner>}
+      {props.locked && (
+        <Text style={[text.muted, { marginBottom: 12, lineHeight: 19 }]}>
+          A claim is in progress. You can submit another once it finishes.
+        </Text>
+      )}
       {!props.locked && props.syncing && (
-        <Banner tone="info">
-          Balance syncing: another claim is paused until a snapshot newer than your last claim arrives (it refreshes
-          automatically, usually within ~15 s). You can still look around and edit the amount.
-        </Banner>
+        <Text style={[text.muted, { marginBottom: 12, lineHeight: 19 }]}>
+          New claims are paused until balances catch up with your last claim (refreshes automatically, usually within ~15
+          s). You can still edit the amount.
+        </Text>
       )}
 
-      <Card>
-        <Text style={text.muted}>Asset</Text>
-        <View style={styles.row}>
-          {props.items.map((i) => (
-            <Chip
-              key={i.asset}
-              label={i.asset}
-              active={i.asset === asset}
-              disabled={confirming || props.locked}
-              onPress={() => {
-                setAsset(i.asset);
-                setAmountText('');
-              }}
+      <View style={styles.row}>
+        {props.items.map((i) => (
+          <Pill
+            key={i.asset}
+            label={i.asset}
+            asset={i.asset}
+            active={i.asset === asset}
+            disabled={locked}
+            onPress={() => {
+              setAsset(i.asset);
+              setAmountText('');
+            }}
+          />
+        ))}
+      </View>
+
+      {optLoading && <ActivityIndicator style={{ marginVertical: 24 }} />}
+      {optError && (
+        <Card>
+          <Text style={{ color: colors.danger, fontSize: 14, marginBottom: 10 }}>
+            Could not load claim options: {optError.message}
+          </Text>
+          <Button label="Retry" kind="secondary" onPress={loadOptions} />
+        </Card>
+      )}
+
+      {options && !confirming && !props.locked && (
+        <>
+          <Card style={{ alignItems: 'center', paddingVertical: 20 }}>
+            <Text style={text.label}>YOU CLAIM</Text>
+            <TextInput
+              value={amountText}
+              onChangeText={setAmountText}
+              editable={!locked}
+              keyboardType="decimal-pad"
+              inputMode="decimal"
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="0"
+              placeholderTextColor={colors.faint}
+              style={[styles.amountInput, num, { color: check && !check.ok ? colors.danger : colors.text }]}
             />
-          ))}
-        </View>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.muted }}>{item.asset}</Text>
+            {check && !check.ok && <Text style={[styles.err, { textAlign: 'center' }]}>{check.message}</Text>}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 14, gap: 10 }}>
+              <Text style={[text.muted, num]}>
+                Available {plain(item.available)} {item.asset} · Min {plain(options.minAmount)} {item.asset}
+              </Text>
+            </View>
+            <Button
+              label="Use max"
+              kind="secondary"
+              size="sm"
+              disabled={locked}
+              onPress={() => setAmountText(plain(item.available))}
+              style={{ marginTop: 10 }}
+            />
+          </Card>
 
-        {optLoading && <ActivityIndicator style={{ marginVertical: 12 }} />}
-        {optError && (
-          <>
-            <Banner tone="error">Could not load claim options: {optError.message}</Banner>
-            <Button label="Retry" kind="secondary" onPress={loadOptions} />
-          </>
-        )}
-
-        {options && (
-          <>
-            <Text style={[text.muted, { marginTop: 8 }]}>Destination</Text>
-            <View style={styles.row}>
+          <Card>
+            <SummaryRow label="You claim" value={valid ? `${valid.text} ${item.asset}` : '—'} />
+            <SummaryRow label="Fee" value={`− ${feeText}`} muted />
+            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 8 }} />
+            <SummaryRow label="You receive" value={preview ? `${plain(preview.receive)} ${item.asset}` : '—'} strong />
+            {preview && !preview.receive.gt(0) && (
+              <Text style={styles.err}>Warning: the fee is not smaller than the amount, so you would receive nothing.</Text>
+            )}
+            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 8 }} />
+            <Text style={text.label}>TO</Text>
+            <View style={[styles.row, { marginTop: 8 }]}>
               {options.destinations.map((d) => (
-                <Chip
-                  key={d.id}
-                  label={d.label}
-                  active={d.id === destinationId}
-                  disabled={confirming || props.locked}
-                  onPress={() => setDestinationId(d.id)}
-                />
+                <Pill key={d.id} label={d.label} active={d.id === destinationId} disabled={locked} onPress={() => setDestinationId(d.id)} />
               ))}
             </View>
+          </Card>
 
-            <Text style={[text.muted, { marginTop: 8 }]}>
-              Available {plain(item.available)} {item.asset} · Min {plain(options.minAmount)} {item.asset} · Fee{' '}
-              {plain(options.fee)} {item.asset}
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-              <TextInput
-                value={amountText}
-                onChangeText={setAmountText}
-                editable={!confirming && !props.locked}
-                keyboardType="decimal-pad"
-                inputMode="decimal"
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder={`Amount in ${item.asset}`}
-                style={styles.input}
-              />
-              <Button
-                label="Max"
-                kind="secondary"
-                disabled={confirming || props.locked}
-                onPress={() => setAmountText(plain(item.available))}
-              />
-            </View>
-            {check && !check.ok && <Text style={styles.err}>{check.message}</Text>}
-
-            {preview && valid && (
-              <View style={{ marginTop: 10 }}>
-                <Text style={text.body}>Fee: {plain(preview.fee)} {item.asset}</Text>
-                <Text style={[text.body, { fontWeight: '700' }]}>
-                  You receive: {plain(preview.receive)} {item.asset}
-                </Text>
-                {!preview.receive.gt(0) && (
-                  <Text style={styles.err}>
-                    Warning: the fee is not smaller than the amount, so you would receive nothing.
-                  </Text>
-                )}
-              </View>
-            )}
-
-            {!confirming && (
-              <Button
-                label="Review claim"
-                onPress={() => {
-                  props.onRefreshBalances(); // re-validate against the freshest snapshot
-                  setConfirming(true);
-                }}
-                disabled={!canSubmit}
-                style={{ marginTop: 10 }}
-              />
-            )}
-          </>
-        )}
-      </Card>
+          <Button
+            label="Review claim"
+            onPress={() => {
+              props.onRefreshBalances(); // re-validate against the freshest snapshot
+              setConfirming(true);
+            }}
+            disabled={!canSubmit}
+          />
+        </>
+      )}
 
       {confirming && valid && preview && destination && (
-        <Card>
-          <Text style={text.h2}>Confirm claim</Text>
-          <Text style={[text.body, { marginTop: 6 }]}>Claim: {valid.text} {item.asset}</Text>
-          <Text style={text.body}>Fee: {plain(preview.fee)} {item.asset}</Text>
-          <Text style={[text.body, { fontWeight: '700' }]}>
-            You receive: {plain(preview.receive)} {item.asset}
-          </Text>
-          <Text style={text.body}>To: {destination.label}</Text>
-          <Text style={[text.muted, { marginVertical: 6 }]}>
+        <Card style={{ borderWidth: 2, borderColor: colors.primary }}>
+          <Text style={[text.h2, { marginBottom: 6 }]}>Confirm claim</Text>
+          <SummaryRow label="You claim" value={`${valid.text} ${item.asset}`} />
+          <SummaryRow label="Fee" value={`− ${plain(preview.fee)} ${item.asset}`} muted />
+          <SummaryRow label="You receive" value={`${plain(preview.receive)} ${item.asset}`} strong />
+          <SummaryRow label="To" value={destination.label} muted />
+          <Text style={[text.muted, { marginVertical: 10 }]}>
             This is a financial operation and cannot be cancelled once submitted.
           </Text>
           <Button label="Confirm and submit" onPress={submit} disabled={!canSubmit} />
-          <Button label="Edit" kind="link" onPress={() => setConfirming(false)} />
+          <Button label="Edit amount" kind="link" onPress={() => setConfirming(false)} />
         </Card>
       )}
       {confirming && !valid && (
         <Banner tone="warn">Balances changed and this claim is no longer valid. Go back and edit the amount.</Banner>
       )}
-      {confirming && !valid && <Button label="Edit" kind="link" onPress={() => setConfirming(false)} />}
+      {confirming && !valid && <Button label="Edit amount" kind="link" onPress={() => setConfirming(false)} />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-  chip: {
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 14,
     minHeight: 40,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
     backgroundColor: colors.card,
-  },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  input: {
-    flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 44,
-    fontSize: 16,
-    color: colors.text,
+  },
+  pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  back: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  amountInput: {
+    width: '100%',
+    textAlign: 'center',
+    fontSize: 44,
+    fontWeight: '800',
+    letterSpacing: -1,
+    paddingVertical: 6,
+    ...({ outlineStyle: 'none' } as object),
   },
   err: { color: colors.danger, fontSize: 13, marginTop: 6 },
 });

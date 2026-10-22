@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { ApiError, Balances } from '../lib/api';
-import { formatUsd, plain, totalUsd, usdValue } from '../lib/money';
-import { Banner, Button, Card, colors, text } from '../ui';
+import { D, formatUsd, plain, totalUsd, usdValue } from '../lib/money';
+import { Avatar, Banner, Button, Card, colors, num, text } from '../ui';
 
 function useNow(intervalMs = 1000) {
   const [now, setNow] = useState(Date.now());
@@ -18,6 +18,14 @@ function ago(ms: number) {
   if (s < 60) return `${s}s ago`;
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s ago`;
   return `${Math.floor(s / 3600)}h ago`;
+}
+
+function Chip(props: { label: string; tone?: 'warn' }) {
+  return (
+    <View style={{ backgroundColor: props.tone === 'warn' ? colors.warnBg : colors.soft, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
+      <Text style={[{ fontSize: 12, fontWeight: '600', color: props.tone === 'warn' ? colors.warn : colors.muted }, num]}>{props.label}</Text>
+    </View>
+  );
 }
 
 export function BalancesScreen(props: {
@@ -37,7 +45,7 @@ export function BalancesScreen(props: {
 
   if (props.loading && !data) {
     return (
-      <View style={{ padding: 24, alignItems: 'center' }}>
+      <View style={{ padding: 40, alignItems: 'center' }}>
         <ActivityIndicator />
         <Text style={[text.muted, { marginTop: 8 }]}>Loading balances…</Text>
       </View>
@@ -46,6 +54,8 @@ export function BalancesScreen(props: {
 
   const age = data ? now - new Date(data.asOf).getTime() : 0;
   const stale = props.claimInProgress || props.syncing;
+  const outdated = age > 45000;
+  const dot = stale || outdated || error ? '#F5B83D' : colors.accent;
 
   return (
     <View>
@@ -56,61 +66,84 @@ export function BalancesScreen(props: {
             : `Could not refresh balances: ${error.message}.${data ? ' Showing the last snapshot; retrying automatically while a claim is syncing.' : ''}`}
         </Banner>
       )}
-      {unauthorized && <Button label="Change token" onPress={props.onChangeToken} style={{ marginBottom: 8 }} />}
-      {/* The only Retry/Refresh control lives in the total card; this covers the "no snapshot yet" case. */}
+      {unauthorized && <Button label="Change token" onPress={props.onChangeToken} style={{ marginBottom: 12 }} />}
+      {/* The only Retry/Refresh control lives in the hero card; this covers the "no snapshot yet" case. */}
       {error && !unauthorized && !data && (
-        <Button label="Retry" onPress={props.onRefresh} disabled={props.refreshing} style={{ marginBottom: 8 }} />
+        <Button label="Retry" onPress={props.onRefresh} disabled={props.refreshing} style={{ marginBottom: 12 }} />
       )}
 
       {data && (
         <>
-          <Card>
+          <View style={{ backgroundColor: colors.primary, borderRadius: 24, padding: 20, marginBottom: 12 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={text.muted}>Total claimable (available)</Text>
-              <Button
-                label={props.refreshing ? 'Refreshing…' : error ? 'Retry' : 'Refresh'}
-                kind="secondary"
-                size="sm"
+              <Text style={{ color: '#B8BDC4', fontSize: 13, fontWeight: '600' }}>Total claimable</Text>
+              <Pressable
                 onPress={props.onRefresh}
                 disabled={props.refreshing}
-              />
+                accessibilityRole="button"
+                style={{ backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6, opacity: props.refreshing ? 0.6 : 1 }}
+              >
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
+                  {props.refreshing ? 'Refreshing…' : error ? 'Retry' : '↻ Refresh'}
+                </Text>
+              </Pressable>
             </View>
-            <Text style={{ fontSize: 28, fontWeight: '700', color: colors.text, marginVertical: 2 }}>
+            <Text style={[{ fontSize: 38, fontWeight: '800', color: '#fff', letterSpacing: -1, marginTop: 6 }, num]}>
               {formatUsd(totalUsd(data.items))}
             </Text>
-            <Text style={[text.muted, age > 45000 && { color: colors.warn, fontWeight: '600' }]}>
-              Snapshot as of {new Date(data.asOf).toLocaleTimeString()} ({ago(age)}
-              {age > 45000 ? ' – may be outdated' : ''})
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dot, marginRight: 8 }} />
+              <Text style={{ color: '#B8BDC4', fontSize: 12, flex: 1 }}>
+                Updated {ago(age)} · {new Date(data.asOf).toLocaleTimeString()}
+                {outdated ? ' · may be outdated' : ''}
+              </Text>
+            </View>
             {stale && (
-              <Text style={{ color: colors.info, fontSize: 13, marginTop: 4 }}>
+              <Text style={{ color: '#F5D58A', fontSize: 12, marginTop: 6, lineHeight: 17 }}>
                 {props.claimInProgress
                   ? 'Claim in progress — this snapshot may not include it yet.'
                   : 'Balance syncing — waiting for a snapshot newer than your claim. Figures may be outdated.'}
               </Text>
             )}
-          </Card>
+          </View>
 
+          <Text style={[text.label, { marginLeft: 4, marginBottom: 8 }]}>ASSETS</Text>
           {data.items.length === 0 && <Text style={text.muted}>No assets yet.</Text>}
-          {data.items.map((i) => (
-            <Card key={i.asset}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <View>
-                  <Text style={text.h2}>{i.asset}</Text>
-                  <Text style={text.muted}>${plain(i.usdPrice)} / unit</Text>
+          <Card style={{ paddingVertical: 4, paddingHorizontal: 16 }}>
+            {data.items.map((i, idx) => {
+              const hasPending = new D(i.pending).gt(0);
+              const hasClaiming = new D(i.claiming).gt(0);
+              return (
+                <View
+                  key={i.asset}
+                  style={{ paddingVertical: 14, borderTopWidth: idx === 0 ? 0 : 1, borderTopColor: colors.border }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Avatar asset={i.asset} />
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={text.h2}>{i.asset}</Text>
+                      <Text style={[text.muted, num]}>${plain(i.usdPrice)}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[{ fontSize: 17, fontWeight: '700', color: colors.text }, num]}>
+                        {plain(i.available)} {i.asset}
+                      </Text>
+                      <Text style={[text.muted, num]}>≈ {formatUsd(usdValue(i.available, i.usdPrice))}</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, flex: 1, marginRight: 8 }}>
+                      {hasPending && <Chip label={`Pending ${plain(i.pending)} ${i.asset}`} />}
+                      {hasClaiming && (
+                        <Chip label={`Claiming ${plain(i.claiming)} ${i.asset}${stale ? ' · may be outdated' : ''}`} tone="warn" />
+                      )}
+                    </View>
+                    <Button label="Claim" kind="accent" size="sm" onPress={() => props.onClaim(i.asset)} />
+                  </View>
                 </View>
-                <Button label="Claim" size="sm" onPress={() => props.onClaim(i.asset)} />
-              </View>
-              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text, marginTop: 4 }}>
-                {plain(i.available)} {i.asset} <Text style={text.muted}>available</Text>
-              </Text>
-              <Text style={text.muted}>≈ {formatUsd(usdValue(i.available, i.usdPrice))}</Text>
-              <Text style={[text.muted, { marginTop: 4 }]}>
-                Pending: {plain(i.pending)} {i.asset} · Claiming: {plain(i.claiming)} {i.asset}
-                {stale ? ' (may be outdated)' : ''}
-              </Text>
-            </Card>
-          ))}
+              );
+            })}
+          </Card>
         </>
       )}
     </View>

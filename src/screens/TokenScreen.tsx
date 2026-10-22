@@ -15,8 +15,9 @@ export function TokenScreen(props: {
   };
   return (
     <View>
+      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.muted, letterSpacing: 0.6, marginTop: 24 }}>CASHMINE</Text>
       <Text style={text.h1}>{props.hasToken ? 'Change API token' : 'Enter your API token'}</Text>
-      <Text style={[text.muted, { marginVertical: 8 }]}>
+      <Text style={[text.muted, { marginTop: 6, marginBottom: 16, lineHeight: 19 }]}>
         The token from your task email. It is stored only in this browser (localStorage) and sent only to the CashMine
         API.
       </Text>
@@ -50,9 +51,10 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 44,
+    backgroundColor: colors.bg,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 52,
     fontSize: 16,
     marginVertical: 10,
     color: colors.text,
