@@ -91,7 +91,7 @@ http
           claim.updatedAt = new Date().toISOString();
           if (process.env.FAIL503) failUntil = Date.now() + 12000;
           if (claim.status === 'failed') {
-            claim.failureReason = 'Destination rejected the transfer';
+            claim.failureReason = 'The destination rejected the transfer. The amount was returned to your balance.';
             available += amount;
           }
         }, 8000);

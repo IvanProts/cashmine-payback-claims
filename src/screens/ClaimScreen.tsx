@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ApiError, BalanceItem, ClaimBody, ClaimOptions, getClaimOptions } from '../lib/api';
-import { claimPreview, plain, validateAmount } from '../lib/money';
+import { amountAfterSettlement, amountWhenNothingClaimable, claimability, isNewSettlement, optionsFor } from '../lib/claimForm';
+import { claimPreview, D, plain, validateAmount } from '../lib/money';
 import { Avatar, Banner, Button, Card, colors, num, text } from '../ui';
 
 function Pill(props: { label: string; asset?: string; active: boolean; onPress: () => void; disabled?: boolean }) {
@@ -39,6 +40,7 @@ export function ClaimScreen(props: {
   initialAsset: string | null;
   locked: boolean; // a claim attempt is unresolved: form disabled
   syncing: boolean; // settled claim not yet reconciled with a newer snapshot: new submissions paused
+  settled: { id: string; status: 'completed' | 'failed' } | null; // claim that just reached a terminal state
   rejection: ApiError | null;
   onSubmit: (body: ClaimBody) => void;
   onRefreshBalances: () => void;
@@ -46,7 +48,7 @@ export function ClaimScreen(props: {
   onChangeToken: () => void;
 }) {
   const [asset, setAsset] = useState<string | null>(props.initialAsset ?? props.items[0]?.asset ?? null);
-  const [options, setOptions] = useState<ClaimOptions | null>(null);
+  const [rawOptions, setOptions] = useState<ClaimOptions | null>(null);
   const [optError, setOptError] = useState<Error | null>(null);
   const [optLoading, setOptLoading] = useState(false);
   const [destinationId, setDestinationId] = useState<string | null>(null);
@@ -54,6 +56,10 @@ export function ClaimScreen(props: {
   const [confirming, setConfirming] = useState(false);
 
   const item = props.items.find((i) => i.asset === asset) ?? null;
+  // Options are per asset: ignore stale ones in the render between an asset switch and the new options arriving.
+  const options = optionsFor(rawOptions, asset);
+  const claimable = options && item ? claimability(item.available, options.minAmount) : null;
+  const cannotClaim = claimable !== null && !claimable.canClaim;
 
   const optSeq = useRef(0); // only the latest request may update state (asset switch / unmount)
 
@@ -88,16 +94,37 @@ export function ClaimScreen(props: {
     if (props.locked || props.rejection) setConfirming(false);
   }, [props.locked, props.rejection]);
 
+  // A settled claim: completed -> clear the (consumed) amount; failed -> keep it so the user can retry.
+  const lastSettled = useRef(props.settled?.id ?? null);
+  const holdForRetry = useRef(false); // set after a failed claim; released as soon as the user edits or switches asset
+  useEffect(() => {
+    const settled = props.settled;
+    if (settled && isNewSettlement(lastSettled.current, settled.id)) {
+      holdForRetry.current = settled.status === 'failed';
+      setAmountText((t) => amountAfterSettlement(settled.status, t));
+      setConfirming(false);
+    }
+    lastSettled.current = settled?.id ?? null;
+  }, [props.settled?.id, props.settled?.status]);
+
+  // Nothing claimable (zero or below the minimum): show the empty state, never a stale amount or its errors.
+  useEffect(() => {
+    if (cannotClaim) {
+      setAmountText((t) => amountWhenNothingClaimable(t, holdForRetry.current));
+      setConfirming(false);
+    }
+  }, [cannotClaim]);
+
   if (!item) return <Text style={text.muted}>No asset available to claim.</Text>;
 
   const check =
-    options && amountText !== ''
+    options && claimable?.canClaim && amountText !== ''
       ? validateAmount(amountText, { decimals: item.decimals, minAmount: options.minAmount, available: item.available })
       : null;
   const valid = check?.ok ? check : null;
   const preview = valid && options ? claimPreview(valid.amount, options.fee) : null;
   const destination = options?.destinations.find((d) => d.id === destinationId) ?? null;
-  const canSubmit = !!valid && !!options && !!destination && !props.locked && !props.syncing;
+  const canSubmit = !!valid && !!options && !!claimable?.canClaim && !!destination && !props.locked && !props.syncing;
 
   const submit = () => {
     if (!canSubmit || !valid || !destination) return;
@@ -152,6 +179,7 @@ export function ClaimScreen(props: {
             active={i.asset === asset}
             disabled={locked}
             onPress={() => {
+              holdForRetry.current = false;
               setAsset(i.asset);
               setAmountText('');
             }}
@@ -169,13 +197,47 @@ export function ClaimScreen(props: {
         </Card>
       )}
 
-      {options && !confirming && !props.locked && (
+      {options && cannotClaim && !confirming && !props.locked && (
+        <>
+          <Card style={{ alignItems: 'center', paddingVertical: 28 }}>
+            <Text style={text.h2}>
+              {claimable && !claimable.canClaim && claimable.reason === 'NONE_AVAILABLE'
+                ? 'Nothing to claim yet'
+                : 'Below the minimum claim'}
+            </Text>
+            <Text style={[text.muted, { textAlign: 'center', marginTop: 8, lineHeight: 19 }, num]}>
+              Available {plain(item.available)} {item.asset} · Minimum {plain(options.minAmount)} {item.asset}
+            </Text>
+            <Text style={[text.muted, { textAlign: 'center', marginTop: 6, lineHeight: 19 }]}>
+              {claimable && !claimable.canClaim && claimable.reason === 'NONE_AVAILABLE'
+                ? 'Payback becomes claimable once it is confirmed.'
+                : 'You can claim once your available balance reaches the minimum.'}
+            </Text>
+            {new D(item.pending).gt(0) && (
+              <Text style={[text.muted, { textAlign: 'center', marginTop: 6 }, num]}>
+                Pending confirmation: {plain(item.pending)} {item.asset}
+              </Text>
+            )}
+            {new D(item.claiming).gt(0) && (
+              <Text style={[text.muted, { textAlign: 'center', marginTop: 6 }, num]}>
+                In unfinished claims: {plain(item.claiming)} {item.asset}
+              </Text>
+            )}
+          </Card>
+          <Button label="Review claim" onPress={() => {}} disabled />
+        </>
+      )}
+
+      {options && claimable?.canClaim && !confirming && !props.locked && (
         <>
           <Card style={{ alignItems: 'center', paddingVertical: 20 }}>
             <Text style={text.label}>YOU CLAIM</Text>
             <TextInput
               value={amountText}
-              onChangeText={setAmountText}
+              onChangeText={(t) => {
+                holdForRetry.current = false;
+                setAmountText(t);
+              }}
               editable={!locked}
               keyboardType="decimal-pad"
               inputMode="decimal"
@@ -196,8 +258,11 @@ export function ClaimScreen(props: {
               label="Use max"
               kind="secondary"
               size="sm"
-              disabled={locked}
-              onPress={() => setAmountText(plain(item.available))}
+              disabled={locked || props.syncing} // while syncing, "available" may be a stale snapshot
+              onPress={() => {
+                holdForRetry.current = false;
+                setAmountText(plain(item.available));
+              }}
               style={{ marginTop: 10 }}
             />
           </Card>

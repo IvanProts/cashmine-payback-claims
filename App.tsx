@@ -146,6 +146,11 @@ function Main(props: { token: string; onChangeToken: () => void }) {
           initialAsset={asset}
           locked={claim.locked}
           syncing={syncing}
+          settled={
+            claim.attempt?.phase === 'done' && claim.attempt.claim && claim.attempt.claim.status !== 'pending'
+              ? { id: claim.attempt.claim.id, status: claim.attempt.claim.status }
+              : null
+          }
           rejection={claim.rejection}
           onSubmit={claim.start}
           onRefreshBalances={balances.refresh}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { ClaimAttempt } from '../lib/claimFlow';
+import { describeFailure } from '../lib/claimForm';
 import { plain } from '../lib/money';
 import { Button, Card, colors, num, text } from '../ui';
 
@@ -110,7 +111,7 @@ export function ClaimStatus(props: {
 
       {claim.status === 'failed' && (
         <Text style={{ color: colors.danger, fontSize: 13, marginTop: 6 }}>
-          {claim.failureReason ? `${claim.failureReason}. ` : ''}The amount returns to your available balance.
+          {describeFailure(claim.failureReason)}
         </Text>
       )}
       {terminal && (

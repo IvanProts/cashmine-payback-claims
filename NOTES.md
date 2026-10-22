@@ -23,6 +23,16 @@ re-opened. It is scoped to the token (`Main` is keyed by the token tag, so a tok
 another account's gate). Safeguard: a gate still open after 5 minutes is released so a threshold that can never be met
 (e.g. clock oddities) cannot block claims forever. The server still checks `available` live on every POST.
 
+**Claim form state (decisions in `src/lib/claimForm.ts`, unit-tested).** After a claim *completes* the typed amount is
+cleared (it was consumed), so it can't be re-validated against the new, lower balance; the completed claim card stays. After a
+*failed* claim the amount and destination are kept so the user can retry (destination can be changed); the amount is held
+even if the snapshot still shows 0 until the funds return, and released as soon as the user edits it or switches asset. If
+nothing is claimable (available is 0 or below `minAmount`) the form is replaced by an explanatory empty state (with pending /
+claiming context) and Review is disabled instead of showing validation errors. Switching asset clears the amount and ignores
+options that belong to the previous asset. "Use max" is disabled while balances are syncing (the snapshot may be stale). The
+failure line shows the server's `failureReason` once, adding our "returns to your available balance" sentence only if the
+reason does not already say so. These are UI-state rules only; API calls and claim/idempotency logic are unchanged.
+
 **Money.** All amounts are strings end to end; arithmetic uses `decimal.js` (isolated constructor, 40 digits) – no
 `Number` for money. Fee is a flat per-asset amount from `claim-options`; received = amount − fee (exact subtraction, so
 no rounding rule is needed). Amounts are sent as the validated user text (never `toString()`-ed, no exponents).
@@ -70,7 +80,7 @@ in-flight page request. The list reloads when the tab is opened or "Refresh" is 
 no router, no UI kit. Token is kept in `localStorage` (browser-only app); it is never logged or placed in URLs.
 
 ## Verification performed
-- 87 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking, sync gate) – `npm test`.
+- 103 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking, sync gate) – `npm test`.
 - Manual browser runs at 390 px against the real API for token entry and 401 handling, and against the local mock for the
   balance → validation → confirm → submit → pending → completed/failed flow, lost response (504 after creation, replayed
   by key → exactly one claim), all-504 unknown state + "Check again", and reload-resume.
