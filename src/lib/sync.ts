@@ -31,3 +31,35 @@ export function isReconciled(gate: SyncGate, snap: { okStartedAt: number | null;
   if (Number.isNaN(asOf)) return false;
   return snap.okStartedAt >= gate.observedAt && asOf > gate.minAsOf;
 }
+
+/** Persisted form of the gate: timestamps and ids only (never balances), scoped to one token. */
+export interface StoredGate extends SyncGate {
+  tokenTag: string;
+  closed: boolean;
+}
+
+// Liveness safeguard: snapshots refresh every ~15 s, so a gate that is still open after this long means the
+// threshold can never be met (e.g. clock oddities); release it instead of blocking claims forever.
+export const MAX_GATE_AGE_MS = 5 * 60 * 1000;
+
+export const isExpired = (gate: SyncGate, now: number) => now - gate.observedAt > MAX_GATE_AGE_MS;
+
+/** After a reload: the persisted gate is still in force only if it is open and belongs to this token. */
+export function restoreGate(stored: StoredGate | null, tag: string): StoredGate | null {
+  return stored && stored.tokenTag === tag && !stored.closed ? stored : null;
+}
+
+/**
+ * Gate for a settled claim. A persisted gate for the same claim and token wins (open or closed), so a reload keeps
+ * the original, stricter threshold and never re-opens a gate that was already reconciled.
+ */
+export function ensureGate(
+  stored: StoredGate | null,
+  tag: string,
+  claim: Claim,
+  currentAsOf: string | null,
+  now: number,
+): StoredGate {
+  if (stored && stored.tokenTag === tag && stored.claimId === claim.id) return stored;
+  return { ...makeGate(claim, currentAsOf, now), tokenTag: tag, closed: false };
+}

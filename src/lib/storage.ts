@@ -25,6 +25,7 @@ function remove(key: string) {
 
 const TOKEN_KEY = 'cashmine.token';
 const ATTEMPT_KEY = 'cashmine.claimAttempt';
+const GATE_KEY = 'cashmine.syncGate';
 
 export const loadToken = () => read(TOKEN_KEY);
 export const saveToken = (t: string) => write(TOKEN_KEY, t);
@@ -41,6 +42,17 @@ export function loadJson<T>(): T | null {
 }
 export const saveJson = (v: unknown) => write(ATTEMPT_KEY, JSON.stringify(v));
 export const clearJson = () => remove(ATTEMPT_KEY);
+
+export function loadGate<T>(): T | null {
+  const raw = read(GATE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+export const saveGate = (v: unknown) => write(GATE_KEY, JSON.stringify(v));
 
 /** Non-reversible-enough tag so a stored claim attempt is only resumed with the token that created it. */
 export function tokenTag(token: string): string {

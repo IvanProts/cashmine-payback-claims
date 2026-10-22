@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { clearToken, loadToken, saveToken } from './src/lib/storage';
+import { clearToken, loadGate, loadToken, saveGate, saveToken, tokenTag } from './src/lib/storage';
 import { BalancesScreen } from './src/screens/BalancesScreen';
 import { ClaimScreen } from './src/screens/ClaimScreen';
 import { ClaimStatus } from './src/screens/ClaimStatus';
 import { TokenScreen } from './src/screens/TokenScreen';
-import { isReconciled, makeGate, SyncGate } from './src/lib/sync';
+import { ensureGate, isExpired, isReconciled, restoreGate, StoredGate } from './src/lib/sync';
 import { useClaimAttempt } from './src/useClaimAttempt';
 import { useBalances } from './src/useBalances';
 import { Button, colors, text } from './src/ui';
@@ -36,7 +36,7 @@ export default function App() {
               }}
             />
           ) : (
-            <Main token={token} onChangeToken={() => setEditingToken(true)} />
+            <Main key={tokenTag(token)} token={token} onChangeToken={() => setEditingToken(true)} />
           )}
         </View>
       </ScrollView>
@@ -55,7 +55,10 @@ function Main(props: { token: string; onChangeToken: () => void }) {
   });
   // Sync gate: after a claim settles, balances count as "syncing" until a successful fetch returns a snapshot
   // newer than the settlement. Only drives messaging and pauses NEW claims; no amount is ever altered.
-  const [gate, setGate] = useState<SyncGate | null>(null);
+  // Persisted (timestamps only, tagged with the token) so a reload cannot bypass it; Main is keyed by token,
+  // so a token change starts from a clean slate and never inherits another account's gate.
+  const tag = tokenTag(props.token);
+  const [gate, setGate] = useState<StoredGate | null>(() => restoreGate(loadGate<StoredGate>(), tag));
   // Poll balances while a claim is unresolved or syncing so the snapshot that reflects it shows up
   // (also retries automatically if a refresh fails, e.g. 503).
   const balances = useBalances(props.token, claim.locked || gate ? 5000 : null);
@@ -67,13 +70,19 @@ function Main(props: { token: string; onChangeToken: () => void }) {
   useEffect(() => {
     if (!settledId || !latest.current.attempt?.claim) return;
     const c = latest.current.attempt.claim;
-    setGate((g) => (g?.claimId === settledId ? g : makeGate(c, latest.current.asOf, Date.now())));
-  }, [settledId]);
+    const stored = loadGate<StoredGate>();
+    const g = ensureGate(stored, tag, c, latest.current.asOf, Date.now());
+    if (g !== stored) saveGate(g);
+    setGate(g.closed ? null : g);
+  }, [settledId, tag]);
   useEffect(() => {
-    if (gate && isReconciled(gate, { okStartedAt: balances.okStartedAt, asOf: balances.data?.asOf ?? null })) {
+    if (!gate) return;
+    const snap = { okStartedAt: balances.okStartedAt, asOf: balances.data?.asOf ?? null };
+    if (isReconciled(gate, snap) || isExpired(gate, Date.now())) {
+      saveGate({ ...gate, closed: true }); // remember it was reconciled so a reload does not re-open it
       setGate(null);
     }
-  }, [gate, balances.okStartedAt, balances.data]);
+  }, [gate, balances.okStartedAt, balances.data, balances.refreshing]);
   const syncing = !!gate;
 
   return (

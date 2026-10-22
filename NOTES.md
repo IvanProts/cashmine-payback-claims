@@ -17,8 +17,11 @@ newer than both the claim's `updatedAt` and the snapshot we were showing. Until 
 syncing" (separately from the confirmed claim status), the balances card flags figures as possibly outdated, balances are
 polled every 5 s (so a failed refresh retries on its own), and **only new claim submissions** (Review/Confirm) are paused;
 browsing, refresh, editing the amount and token changes stay enabled. No amount is computed or overwritten locally.
-Limits: the gate is in memory, so dismissing is allowed but a page reload during syncing re-reads a fresh snapshot without
-the pause; the server still checks `available` live on every POST.
+The gate is persisted in `localStorage` (`cashmine.syncGate`: claim id, two timestamps, token tag, closed flag; never
+balances), so a reload or dismissing the claim card cannot bypass it, and a reconciled gate is stored as closed so it is not
+re-opened. It is scoped to the token (`Main` is keyed by the token tag, so a token change starts clean and never inherits
+another account's gate). Safeguard: a gate still open after 5 minutes is released so a threshold that can never be met
+(e.g. clock oddities) cannot block claims forever. The server still checks `available` live on every POST.
 
 **Money.** All amounts are strings end to end; arithmetic uses `decimal.js` (isolated constructor, 40 digits) – no
 `Number` for money. Fee is a flat per-asset amount from `claim-options`; received = amount − fee (exact subtraction, so
@@ -51,7 +54,7 @@ returns the original claim and never creates a second one. So:
 no router, no UI kit. Token is kept in `localStorage` (browser-only app); it is never logged or placed in URLs.
 
 ## Verification performed
-- 49 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking, sync gate) – `npm test`.
+- 56 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking, sync gate) – `npm test`.
 - Manual browser runs at 390 px against the real API for token entry and 401 handling, and against the local mock for the
   balance → validation → confirm → submit → pending → completed/failed flow, lost response (504 after creation, replayed
   by key → exactly one claim), all-504 unknown state + "Check again", and reload-resume.
