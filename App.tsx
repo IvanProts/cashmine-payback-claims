@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { clearToken, loadToken, saveToken } from './src/lib/storage';
@@ -6,6 +6,7 @@ import { BalancesScreen } from './src/screens/BalancesScreen';
 import { ClaimScreen } from './src/screens/ClaimScreen';
 import { ClaimStatus } from './src/screens/ClaimStatus';
 import { TokenScreen } from './src/screens/TokenScreen';
+import { isReconciled, makeGate, SyncGate } from './src/lib/sync';
 import { useClaimAttempt } from './src/useClaimAttempt';
 import { useBalances } from './src/useBalances';
 import { Button, colors, text } from './src/ui';
@@ -52,21 +53,42 @@ function Main(props: { token: string; onChangeToken: () => void }) {
     refreshRef.current();
     setTimeout(() => refreshRef.current(), 16000);
   });
-  // Poll balances while a claim is unresolved so the snapshot that reflects it shows up.
-  const balances = useBalances(props.token, claim.locked ? 5000 : null);
+  // Sync gate: after a claim settles, balances count as "syncing" until a successful fetch returns a snapshot
+  // newer than the settlement. Only drives messaging and pauses NEW claims; no amount is ever altered.
+  const [gate, setGate] = useState<SyncGate | null>(null);
+  // Poll balances while a claim is unresolved or syncing so the snapshot that reflects it shows up
+  // (also retries automatically if a refresh fails, e.g. 503).
+  const balances = useBalances(props.token, claim.locked || gate ? 5000 : null);
   refreshRef.current = balances.refresh;
+
+  const settledId = claim.attempt?.phase === 'done' ? claim.attempt.claim?.id ?? null : null;
+  const latest = useRef({ attempt: claim.attempt, asOf: balances.data?.asOf ?? null });
+  latest.current = { attempt: claim.attempt, asOf: balances.data?.asOf ?? null };
+  useEffect(() => {
+    if (!settledId || !latest.current.attempt?.claim) return;
+    const c = latest.current.attempt.claim;
+    setGate((g) => (g?.claimId === settledId ? g : makeGate(c, latest.current.asOf, Date.now())));
+  }, [settledId]);
+  useEffect(() => {
+    if (gate && isReconciled(gate, { okStartedAt: balances.okStartedAt, asOf: balances.data?.asOf ?? null })) {
+      setGate(null);
+    }
+  }, [gate, balances.okStartedAt, balances.data]);
+  const syncing = !!gate;
 
   return (
     <View>
       <View style={styles.header}>
         <Text style={text.h1}>CashMine Payback</Text>
-        <Button label="Token" kind="secondary" onPress={props.onChangeToken} style={{ minHeight: 36 }} />
+        <Button label="Token" kind="secondary" size="sm" onPress={props.onChangeToken} />
       </View>
       {claim.attempt && (
         <ClaimStatus
           attempt={claim.attempt}
           busy={claim.busy}
           pollError={claim.pollError}
+          syncing={syncing}
+          balanceError={balances.error}
           onRecheck={claim.recheck}
           onDismiss={claim.dismiss}
         />
@@ -84,6 +106,7 @@ function Main(props: { token: string; onChangeToken: () => void }) {
           }}
           onChangeToken={props.onChangeToken}
           claimInProgress={claim.locked}
+          syncing={syncing}
         />
       ) : (
         <ClaimScreen
@@ -91,6 +114,7 @@ function Main(props: { token: string; onChangeToken: () => void }) {
           items={balances.data.items}
           initialAsset={asset}
           locked={claim.locked}
+          syncing={syncing}
           rejection={claim.rejection}
           onSubmit={claim.start}
           onRefreshBalances={balances.refresh}
@@ -104,7 +128,7 @@ function Main(props: { token: string; onChangeToken: () => void }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  scroll: { alignItems: 'center', padding: 16, paddingBottom: 48 },
+  scroll: { alignItems: 'center', padding: 12, paddingBottom: 32 },
   column: { width: '100%', maxWidth: 480 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
 });

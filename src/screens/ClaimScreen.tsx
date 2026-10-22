@@ -21,6 +21,7 @@ export function ClaimScreen(props: {
   items: BalanceItem[];
   initialAsset: string | null;
   locked: boolean; // a claim attempt is unresolved: form disabled
+  syncing: boolean; // settled claim not yet reconciled with a newer snapshot: new submissions paused
   rejection: ApiError | null;
   onSubmit: (body: ClaimBody) => void;
   onRefreshBalances: () => void;
@@ -71,7 +72,7 @@ export function ClaimScreen(props: {
   const valid = check?.ok ? check : null;
   const preview = valid && options ? claimPreview(valid.amount, options.fee) : null;
   const destination = options?.destinations.find((d) => d.id === destinationId) ?? null;
-  const canSubmit = !!valid && !!options && !!destination && !props.locked;
+  const canSubmit = !!valid && !!options && !!destination && !props.locked && !props.syncing;
 
   const submit = () => {
     if (!canSubmit || !valid || !destination) return;
@@ -84,8 +85,10 @@ export function ClaimScreen(props: {
 
   return (
     <View>
-      <Button label="← Back to balances" kind="secondary" onPress={props.onBack} style={{ marginBottom: 12 }} />
-      <Text style={[text.h1, { marginBottom: 8 }]}>Claim</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={text.h1}>Claim</Text>
+        <Button label="← Balances" kind="link" size="sm" onPress={props.onBack} />
+      </View>
 
       {props.rejection && (
         <Banner tone="error">
@@ -95,9 +98,15 @@ export function ClaimScreen(props: {
         </Banner>
       )}
       {props.rejection?.status === 401 && (
-        <Button label="Change token" onPress={props.onChangeToken} style={{ marginBottom: 12 }} />
+        <Button label="Change token" onPress={props.onChangeToken} style={{ marginBottom: 8 }} />
       )}
       {props.locked && <Banner tone="warn">A claim is in progress. You can submit another once it finishes.</Banner>}
+      {!props.locked && props.syncing && (
+        <Banner tone="info">
+          Balance syncing: another claim is paused until a snapshot newer than your last claim arrives (it refreshes
+          automatically, usually within ~15 s). You can still look around and edit the amount.
+        </Banner>
+      )}
 
       <Card>
         <Text style={text.muted}>Asset</Text>
@@ -140,7 +149,8 @@ export function ClaimScreen(props: {
             </View>
 
             <Text style={[text.muted, { marginTop: 8 }]}>
-              Available {plain(item.available)} · Min {plain(options.minAmount)} · Fee {plain(options.fee)} {item.asset}
+              Available {plain(item.available)} {item.asset} · Min {plain(options.minAmount)} {item.asset} · Fee{' '}
+              {plain(options.fee)} {item.asset}
             </Text>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
               <TextInput
@@ -185,7 +195,7 @@ export function ClaimScreen(props: {
                   setConfirming(true);
                 }}
                 disabled={!canSubmit}
-                style={{ marginTop: 12 }}
+                style={{ marginTop: 10 }}
               />
             )}
           </>
@@ -201,17 +211,17 @@ export function ClaimScreen(props: {
             You receive: {plain(preview.receive)} {item.asset}
           </Text>
           <Text style={text.body}>To: {destination.label}</Text>
-          <Text style={[text.muted, { marginVertical: 8 }]}>
+          <Text style={[text.muted, { marginVertical: 6 }]}>
             This is a financial operation and cannot be cancelled once submitted.
           </Text>
-          <Button label="Confirm and submit" onPress={submit} disabled={!canSubmit} style={{ marginBottom: 8 }} />
-          <Button label="Edit" kind="secondary" onPress={() => setConfirming(false)} />
+          <Button label="Confirm and submit" onPress={submit} disabled={!canSubmit} />
+          <Button label="Edit" kind="link" onPress={() => setConfirming(false)} />
         </Card>
       )}
       {confirming && !valid && (
         <Banner tone="warn">Balances changed and this claim is no longer valid. Go back and edit the amount.</Banner>
       )}
-      {confirming && !valid && <Button label="Edit" kind="secondary" onPress={() => setConfirming(false)} />}
+      {confirming && !valid && <Button label="Edit" kind="link" onPress={() => setConfirming(false)} />}
     </View>
   );
 }

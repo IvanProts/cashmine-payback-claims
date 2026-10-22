@@ -21,7 +21,8 @@ export const colors = {
 export function Button(props: {
   label: string;
   onPress: () => void;
-  kind?: 'primary' | 'secondary' | 'danger';
+  kind?: 'primary' | 'secondary' | 'danger' | 'link';
+  size?: 'md' | 'sm';
   disabled?: boolean;
   style?: ViewStyle;
 }) {
@@ -33,14 +34,23 @@ export function Button(props: {
       disabled={props.disabled}
       style={[
         s.btn,
+        props.size === 'sm' && s.btnSm,
         kind === 'primary' && { backgroundColor: colors.primary },
         kind === 'danger' && { backgroundColor: colors.danger },
         kind === 'secondary' && { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border },
+        kind === 'link' && { backgroundColor: 'transparent' },
         props.disabled && { opacity: 0.45 },
         props.style,
       ]}
     >
-      <Text style={[s.btnText, kind === 'secondary' && { color: colors.text }]}>{props.label}</Text>
+      <Text
+        style={[
+          s.btnText,
+          props.size === 'sm' && { fontSize: 14 },
+          kind === 'secondary' && { color: colors.text },
+          kind === 'link' && { color: colors.primary },
+        ]}
+      >{props.label}</Text>
     </Pressable>
   );
 }
@@ -73,14 +83,15 @@ export const text = StyleSheet.create({
 
 const s = StyleSheet.create({
   btn: { minHeight: 44, paddingHorizontal: 16, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  btnSm: { minHeight: 36, paddingHorizontal: 12, borderRadius: 8 },
   btnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   card: {
     backgroundColor: colors.card,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 8,
   },
-  banner: { borderRadius: 10, padding: 12, marginBottom: 12 },
+  banner: { borderRadius: 10, padding: 10, marginBottom: 8 },
 });

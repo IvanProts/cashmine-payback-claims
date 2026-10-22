@@ -10,6 +10,16 @@ Trade-off: after submit the balance can look stale for up to ~15 s; the UI says 
 claim is unresolved, and refreshes again when the claim settles and ~16 s later (next snapshot).
 `asOf` alone is **not** treated as proof that a claim is reflected; `GET /claims/{id}` is the only source of claim status.
 
+**Stale-snapshot policy (after a claim settles).** `GET /claims/{id}` confirms the claim; the balances snapshot can still
+lag (or refresh can fail, e.g. 503). When a claim becomes completed/failed we open a *sync gate* (`src/lib/sync.ts`). It
+closes only when a **successful** balances fetch that **started after** we observed the settlement returns an `asOf`
+newer than both the claim's `updatedAt` and the snapshot we were showing. Until then: the claim card says "Balances:
+syncing" (separately from the confirmed claim status), the balances card flags figures as possibly outdated, balances are
+polled every 5 s (so a failed refresh retries on its own), and **only new claim submissions** (Review/Confirm) are paused;
+browsing, refresh, editing the amount and token changes stay enabled. No amount is computed or overwritten locally.
+Limits: the gate is in memory, so dismissing is allowed but a page reload during syncing re-reads a fresh snapshot without
+the pause; the server still checks `available` live on every POST.
+
 **Money.** All amounts are strings end to end; arithmetic uses `decimal.js` (isolated constructor, 40 digits) – no
 `Number` for money. Fee is a flat per-asset amount from `claim-options`; received = amount − fee (exact subtraction, so
 no rounding rule is needed). Amounts are sent as the validated user text (never `toString()`-ed, no exponents).
@@ -41,7 +51,7 @@ returns the original claim and never creates a second one. So:
 no router, no UI kit. Token is kept in `localStorage` (browser-only app); it is never logged or placed in URLs.
 
 ## Verification performed
-- 43 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking) – `npm test`.
+- 49 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking, sync gate) – `npm test`.
 - Manual browser runs at 390 px against the real API for token entry and 401 handling, and against the local mock for the
   balance → validation → confirm → submit → pending → completed/failed flow, lost response (504 after creation, replayed
   by key → exactly one claim), all-504 unknown state + "Check again", and reload-resume.

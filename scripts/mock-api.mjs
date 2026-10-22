@@ -7,6 +7,9 @@ const claims = new Map(); // id -> claim
 const keys = new Map(); // idempotency key -> { body, id }
 let available = 820.5;
 let n = 0;
+// Realistic snapshots: recomputed only every 15 s. FAIL503=1 makes balances return 503 for 12 s after a claim settles.
+let snap = null;
+let failUntil = 0;
 
 const send = (res, status, json, headers = {}) => {
   res.writeHead(status, {
@@ -27,14 +30,21 @@ http
     }
     const url = new URL(req.url, 'http://x');
     if (url.pathname === '/v1/balances') {
-      const claiming = [...claims.values()].filter((c) => c.status === 'pending').reduce((s, c) => s + Number(c.amount), 0);
-      return send(res, 200, {
-        asOf: new Date().toISOString(),
-        items: [
-          { asset: 'USDT', decimals: 6, available: available.toFixed(6), pending: '50.12', claiming: String(claiming), usdPrice: '1.0002' },
-          { asset: 'ETH', decimals: 18, available: '1.25', pending: '0', claiming: '0', usdPrice: '3200.5' },
-        ],
-      });
+      if (Date.now() < failUntil) return send(res, 503, { error: { code: 'SERVER', message: 'Temporary server error' } });
+      if (!snap || Date.now() - snap.t > 15000) {
+        const claiming = [...claims.values()].filter((c) => c.status === 'pending').reduce((s, c) => s + Number(c.amount), 0);
+        snap = {
+          t: Date.now(),
+          body: {
+            asOf: new Date().toISOString(),
+            items: [
+              { asset: 'USDT', decimals: 6, available: available.toFixed(6), pending: '50.12', claiming: String(claiming), usdPrice: '1.0002' },
+              { asset: 'ETH', decimals: 18, available: '1.25', pending: '0', claiming: '0', usdPrice: '3200.5' },
+            ],
+          },
+        };
+      }
+      return send(res, 200, snap.body);
     }
     if (url.pathname === '/v1/claim-options') {
       return send(res, 200, {
@@ -71,6 +81,8 @@ http
         available -= amount;
         setTimeout(() => {
           claim.status = amount === 13 ? 'failed' : 'completed';
+          claim.updatedAt = new Date().toISOString();
+          if (process.env.FAIL503) failUntil = Date.now() + 12000;
           if (claim.status === 'failed') {
             claim.failureReason = 'Destination rejected the transfer';
             available += amount;
