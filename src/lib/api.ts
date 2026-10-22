@@ -1,3 +1,4 @@
+import { ActivityPage, parseActivityPage } from './activity';
 import { parseServerDecimal } from './money';
 import { withGetRetry } from './retry';
 
@@ -156,6 +157,14 @@ export async function getBalances(token: string): Promise<Balances> {
 
 export async function getClaimOptions(token: string, asset: string): Promise<ClaimOptions> {
   return parseClaimOptions((await get(`/v1/claim-options?asset=${encodeURIComponent(asset)}`, token)).data);
+}
+
+export const ACTIVITY_PAGE_SIZE = 20; // API maximum
+
+/** One page of history, newest first. Pass the previous page's `nextCursor` (opaque) to continue. */
+export async function getActivity(token: string, opts: { cursor?: string | null } = {}): Promise<ActivityPage> {
+  const q = `limit=${ACTIVITY_PAGE_SIZE}${opts.cursor ? `&cursor=${encodeURIComponent(opts.cursor)}` : ''}`;
+  return parseActivityPage((await get(`/v1/activity?${q}`, token)).data);
 }
 
 export async function createClaim(token: string, idempotencyKey: string, body: ClaimBody) {

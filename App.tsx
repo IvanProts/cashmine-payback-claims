@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { clearToken, loadGate, loadToken, saveGate, saveToken, tokenTag } from './src/lib/storage';
+import { ActivityScreen } from './src/screens/ActivityScreen';
 import { BalancesScreen } from './src/screens/BalancesScreen';
 import { ClaimScreen } from './src/screens/ClaimScreen';
 import { ClaimStatus } from './src/screens/ClaimStatus';
@@ -45,7 +46,7 @@ export default function App() {
 }
 
 function Main(props: { token: string; onChangeToken: () => void }) {
-  const [view, setView] = useState<'balances' | 'claim'>('balances');
+  const [view, setView] = useState<'balances' | 'activity' | 'claim'>('balances');
   const [asset, setAsset] = useState<string | null>(null);
   const refreshRef = useRef<() => void>(() => {});
   const claim = useClaimAttempt(props.token, () => {
@@ -105,7 +106,25 @@ function Main(props: { token: string; onChangeToken: () => void }) {
           onDismiss={claim.dismiss}
         />
       )}
-      {view === 'balances' || !balances.data ? (
+      {view !== 'claim' && (
+        <View style={styles.tabs}>
+          {(['balances', 'activity'] as const).map((t) => (
+            <Pressable
+              key={t}
+              accessibilityRole="tab"
+              onPress={() => setView(t)}
+              style={[styles.tab, view === t && styles.tabActive]}
+            >
+              <Text style={{ fontWeight: '700', fontSize: 14, color: view === t ? colors.text : colors.muted }}>
+                {t === 'balances' ? 'Balances' : 'Activity'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {view === 'activity' ? (
+        <ActivityScreen token={props.token} onChangeToken={props.onChangeToken} />
+      ) : view === 'balances' || !balances.data ? (
         <BalancesScreen
           data={balances.data}
           error={balances.error}
@@ -139,6 +158,9 @@ function Main(props: { token: string; onChangeToken: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  tabs: { flexDirection: 'row', backgroundColor: colors.soft, borderRadius: 14, padding: 4, marginBottom: 14 },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 36, borderRadius: 10 },
+  tabActive: { backgroundColor: colors.card },
   root: { flex: 1, backgroundColor: colors.bg },
   scroll: { alignItems: 'center', padding: 16, paddingBottom: 40 },
   column: { width: '100%', maxWidth: 480 },

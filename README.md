@@ -16,7 +16,8 @@ against the CashMine task API (<https://task-api.cashmine.io/docs>).
   (`pending` → `completed` / `failed`, with `failureReason`) via `GET /v1/claims/{id}`.
 - **Safe submission**: attempt (key + exact body) is persisted before sending; unknown outcomes are resolved by
   replaying the identical request with the same key; in-flight claims survive page reloads.
-- Not implemented: Activity history (optional in the brief).
+- **Activity**: read-only history (accruals, reversals, claims; newest first) with cursor pagination ("Load more"),
+  type / signed amount / asset / date / status per row, and loading, empty, error and per-page retry states.
 
 ## Setup
 
@@ -50,7 +51,9 @@ src/lib/claimFlow.ts         idempotent send/replay + status polling (pure, unit
 src/lib/storage.ts           localStorage wrapper
 src/useBalances.ts           balances hook (server-authoritative)
 src/useClaimAttempt.ts       persisted claim attempt hook
-src/screens/                 Token, Balances, Claim, ClaimStatus
+src/lib/activity.ts          activity parsing (signed amounts), page merge, sign formatting
+src/useActivity.ts           paginated history hook
+src/screens/                 Token, Balances, Claim, ClaimStatus, Activity
 ```
 
 See [NOTES.md](NOTES.md) for engineering decisions, AI collaboration and limitations; AI conversation exports are in

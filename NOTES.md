@@ -58,11 +58,19 @@ server's `retryAfterMs` / `Retry-After` (never sooner; if it asks for more than 
 (Found while investigating a first-open "Service temporarily unavailable": one request per screen open, no duplicates; the
 cause was a single transient 503 with no retry. The options loader also now ignores stale responses after an asset switch.)
 
+**Activity (read-only).** `GET /v1/activity?limit=20&cursor=…` (limit 1–20; `nextCursor` is an opaque string, null on the
+last page), newest first. We always request 20, pass `nextCursor` back URL-encoded, append pages with de-duplication by id
+and show "Load more" only while `nextCursor` is non-null. Activity amounts are *signed* strings (negative for reversals and
+claims), so they use their own strict signed-decimal parser (`src/lib/activity.ts`) instead of loosening the unsigned one
+used for balances; display is exact (`Decimal`), with an explicit sign. Unknown types/statuses are shown generically. It is
+independent of balances and claims: a failed later page keeps the loaded rows and offers Retry; a refresh supersedes any
+in-flight page request. The list reloads when the tab is opened or "Refresh" is pressed (it is not live-updated).
+
 **Architecture.** Small: pure logic in `src/lib` (unit-tested without React), two hooks, four screens. No state library,
 no router, no UI kit. Token is kept in `localStorage` (browser-only app); it is never logged or placed in URLs.
 
 ## Verification performed
-- 76 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking, sync gate) – `npm test`.
+- 87 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking, sync gate) – `npm test`.
 - Manual browser runs at 390 px against the real API for token entry and 401 handling, and against the local mock for the
   balance → validation → confirm → submit → pending → completed/failed flow, lost response (504 after creation, replayed
   by key → exactly one claim), all-504 unknown state + "Check again", and reload-resume.
@@ -82,5 +90,5 @@ deploy via Netlify Drop). AI wrote the code and tests; the human reviews, enters
 - No endpoint lists claims, so an unknown outcome can only be reconciled by key replay (not by search).
 - Validation uses the latest snapshot for `available`; a stale snapshot can briefly block/allow differently than the server.
 - Token lives in `localStorage` (readable by any script on the origin); acceptable for this test app, not for production.
-- Single claim at a time; no Activity history; no automated UI/e2e tests (logic is unit-tested, UI verified manually).
+- Single claim at a time; Activity is not live-updated and has no filters; no automated UI/e2e tests (logic is unit-tested, UI verified manually).
 - The bundler/package versions are those scaffolded by `create-expo-app` (Expo SDK 58).

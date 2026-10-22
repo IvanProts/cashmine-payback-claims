@@ -103,6 +103,29 @@ http
       });
       return;
     }
+    // Activity: 45 items, 20 per page, opaque cursor. ACT_EMPTY=1 -> no history; ACT_FAIL=n -> first n cursor requests 503.
+    if (url.pathname === '/v1/activity') {
+      const limit = Math.min(Number(url.searchParams.get('limit') ?? 20), 20);
+      const cursor = url.searchParams.get('cursor');
+      if (cursor && (globalThis.__af = (globalThis.__af ?? 0) + 1) <= Number(process.env.ACT_FAIL ?? 0)) {
+        return send(res, 503, { error: { code: 'SERVER', message: 'Service temporarily unavailable' } });
+      }
+      const all = process.env.ACT_EMPTY ? [] : Array.from({ length: 45 }, (_, i) => {
+        const type = ['accrual', 'accrual', 'claim', 'reversal'][i % 4];
+        return {
+          id: `act_${i}`, type, asset: i % 3 ? 'USDT' : 'ETH',
+          amount: type === 'accrual' ? (9.81 + i / 100).toFixed(2) : `-${(1.5 + i / 10).toFixed(2)}`,
+          status: type === 'accrual' ? (i % 8 ? 'confirmed' : 'pending') : type === 'reversal' ? 'confirmed' : ['completed', 'failed', 'pending'][i % 3],
+          exchange: type === 'claim' ? null : ['Binance', 'Kraken'][i % 2],
+          createdAt: new Date(Date.now() - i * 3600e3 * 7).toISOString(),
+          relatedId: type === 'claim' ? `clm_${i}` : type === 'reversal' ? `act_${i - 1}` : null,
+        };
+      });
+      const start = cursor ? Number(Buffer.from(cursor, 'base64').toString().split(':')[1]) : 0;
+      const items = all.slice(start, start + limit);
+      const next = start + limit < all.length ? Buffer.from(`o:${start + limit}`).toString('base64') + '+/=' : null;
+      return send(res, 200, { items, nextCursor: next });
+    }
     const m = url.pathname.match(/^\/v1\/claims\/(.+)$/);
     if (m) return claims.has(m[1]) ? send(res, 200, claims.get(m[1])) : send(res, 404, { error: { code: 'NOT_FOUND', message: 'Unknown id' } });
     send(res, 404, { error: { code: 'NOT_FOUND', message: 'Unknown endpoint' } });
