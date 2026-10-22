@@ -3,7 +3,7 @@
 Mobile-first Expo + React Native (web) + TypeScript app for viewing crypto payback balances and submitting claims
 against the CashMine task API (<https://task-api.cashmine.io/docs>).
 
-**Live URL:** _TO BE FILLED AFTER DEPLOYMENT_
+**Live URL:** https://inspiring-salamander-6d8f1f.netlify.app/
 
 ## Functionality
 
