@@ -1,4 +1,5 @@
 import { parseServerDecimal } from './money';
+import { withGetRetry } from './retry';
 
 // Public, non-secret config. Overridable for local mock-server testing only.
 export const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? 'https://task-api.cashmine.io';
@@ -146,12 +147,15 @@ export function parseClaim(raw: any): Claim {
 
 // --- endpoints ---
 
+// Reads are retried a couple of times on transient errors (see retry.ts); POST /v1/claims is deliberately not.
+const get = <T>(path: string, token: string) => withGetRetry(() => request<T>('GET', path, token));
+
 export async function getBalances(token: string): Promise<Balances> {
-  return parseBalances((await request('GET', '/v1/balances', token)).data);
+  return parseBalances((await get('/v1/balances', token)).data);
 }
 
 export async function getClaimOptions(token: string, asset: string): Promise<ClaimOptions> {
-  return parseClaimOptions((await request('GET', `/v1/claim-options?asset=${encodeURIComponent(asset)}`, token)).data);
+  return parseClaimOptions((await get(`/v1/claim-options?asset=${encodeURIComponent(asset)}`, token)).data);
 }
 
 export async function createClaim(token: string, idempotencyKey: string, body: ClaimBody) {
@@ -160,5 +164,5 @@ export async function createClaim(token: string, idempotencyKey: string, body: C
 }
 
 export async function getClaim(token: string, id: string): Promise<Claim> {
-  return parseClaim((await request('GET', `/v1/claims/${encodeURIComponent(id)}`, token)).data);
+  return parseClaim((await get(`/v1/claims/${encodeURIComponent(id)}`, token)).data);
 }

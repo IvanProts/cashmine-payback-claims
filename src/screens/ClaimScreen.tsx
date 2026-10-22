@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ApiError, BalanceItem, ClaimBody, ClaimOptions, getClaimOptions } from '../lib/api';
 import { claimPreview, plain, validateAmount } from '../lib/money';
@@ -38,24 +38,32 @@ export function ClaimScreen(props: {
 
   const item = props.items.find((i) => i.asset === asset) ?? null;
 
+  const optSeq = useRef(0); // only the latest request may update state (asset switch / unmount)
+
+  // getClaimOptions retries transient errors itself; an error here means retries were exhausted.
   const loadOptions = useCallback(async () => {
     if (!asset) return;
+    const id = ++optSeq.current;
     setOptLoading(true);
     setOptError(null);
     setOptions(null);
     try {
       const o = await getClaimOptions(props.token, asset);
+      if (id !== optSeq.current) return;
       setOptions(o);
       setDestinationId(o.destinations[0]?.id ?? null);
     } catch (e) {
-      setOptError(e as Error);
+      if (id === optSeq.current) setOptError(e as Error);
     } finally {
-      setOptLoading(false);
+      if (id === optSeq.current) setOptLoading(false);
     }
   }, [asset, props.token]);
 
   useEffect(() => {
     loadOptions();
+    return () => {
+      optSeq.current++;
+    };
   }, [loadOptions]);
 
   // A submitted claim moves the form to the status view; leave the confirm step behind.

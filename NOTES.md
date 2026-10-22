@@ -50,11 +50,19 @@ returns the original claim and never creates a second one. So:
 - Status: poll `GET /claims/{id}` every 2 s (5 s after 60 s) until `completed`/`failed`; transient poll errors never stop it.
 - The stored attempt is tagged with a non-cryptographic hash of the token so it is only resumed with the same token.
 
+**Reads vs. the claim POST.** `GET` requests (balances, claim options, claim status) retry transient failures in the API
+layer (`src/lib/retry.ts`): network errors and 500/502/503/504 get up to 2 retries (0.4 s, 1 s); a 429 waits exactly the
+server's `retryAfterMs` / `Retry-After` (never sooner; if it asks for more than 10 s the error is surfaced instead);
+400/401/404/409 are never retried. Only after the retries fail does the UI show the error with a manual Retry. `POST
+/v1/claims` is deliberately NOT retried here: its only safe retry is the same-key replay in `claimFlow.ts`.
+(Found while investigating a first-open "Service temporarily unavailable": one request per screen open, no duplicates; the
+cause was a single transient 503 with no retry. The options loader also now ignores stale responses after an asset switch.)
+
 **Architecture.** Small: pure logic in `src/lib` (unit-tested without React), two hooks, four screens. No state library,
 no router, no UI kit. Token is kept in `localStorage` (browser-only app); it is never logged or placed in URLs.
 
 ## Verification performed
-- 56 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking, sync gate) – `npm test`.
+- 76 unit tests (parsing, validation, fee, totals, claim-flow retry/replay/tracking, sync gate) – `npm test`.
 - Manual browser runs at 390 px against the real API for token entry and 401 handling, and against the local mock for the
   balance → validation → confirm → submit → pending → completed/failed flow, lost response (504 after creation, replayed
   by key → exactly one claim), all-504 unknown state + "Check again", and reload-resume.

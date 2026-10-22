@@ -29,6 +29,7 @@ http
       return send(res, 401, { error: { code: 'UNAUTHORIZED', message: 'Invalid token' } });
     }
     const url = new URL(req.url, 'http://x');
+    if (process.env.LOG) console.log(new Date().toISOString().slice(11, 23), req.method, url.pathname + url.search);
     if (url.pathname === '/v1/balances') {
       if (Date.now() < failUntil) return send(res, 503, { error: { code: 'SERVER', message: 'Temporary server error' } });
       if (!snap || Date.now() - snap.t > 15000) {
@@ -45,6 +46,12 @@ http
         };
       }
       return send(res, 200, snap.body);
+    }
+    // OPT503=n: the first n claim-options requests fail with 503 (or 429 if OPT429=1) to exercise GET retries.
+    if (url.pathname === '/v1/claim-options' && (globalThis.__opt = (globalThis.__opt ?? 0) + 1) <= Number(process.env.OPT503 ?? 0)) {
+      return process.env.OPT429
+        ? send(res, 429, { error: { code: 'RATE_LIMITED', message: 'Too many requests', retryAfterMs: 2300 } }, { 'Retry-After': '3' })
+        : send(res, 503, { error: { code: 'SERVER', message: 'Service temporarily unavailable' } });
     }
     if (url.pathname === '/v1/claim-options') {
       return send(res, 200, {
